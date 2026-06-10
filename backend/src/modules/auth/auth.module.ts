@@ -91,6 +91,11 @@ import { RolesGuard } from './guards/roles.guard';
      */
     UsersRepository,
     JwtModule,
+    /**
+     * Exported for DriversModule (Phase 2C) and any future module requiring
+     * rate limiting — reuses the same NX+INCR Redis pattern via check().
+     */
+    RateLimitService,
   ],
 })
 export class AuthModule {}

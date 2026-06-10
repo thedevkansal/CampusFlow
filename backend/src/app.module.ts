@@ -29,6 +29,7 @@ import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 // Feature modules
 import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
+import { DriversModule } from '@modules/drivers/drivers.module';
 
 @Module({
   imports: [
@@ -48,7 +49,8 @@ import { UsersModule } from '@modules/users/users.module';
     AuthModule,
     // Phase 2B: Users
     UsersModule,
-    // Phase 2B remaining: DriversModule
+    // Phase 2C: Drivers
+    DriversModule,
     // Phase 3: RidesModule
     // Phase 4: MatchingModule
     // Phase 5: (realtime — already wired via GatewayModule)

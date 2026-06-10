@@ -15,6 +15,10 @@
  * Limits enforced (from REDIS_SCHEMA.md §11 Rate Limiting Counters):
  *   - auth_login:    5 requests / 60s  per IP
  *   - auth_register: 3 requests / 300s per IP
+ *   - drivers_location: 120 requests / 60s per userId (Phase 2C)
+ *
+ * The generic `check()` method is public and exported for use by
+ * other modules (e.g. DriversModule) without code duplication.
  *
  * Source: docs/REDIS_SCHEMA.md — §11 Rate Limiting Counters
  * Source: docs/ENGINEERING_RULES.md — "Rate limiting"
@@ -65,6 +69,24 @@ export class RateLimitService {
    */
   async checkRegisterLimit(identifier: string): Promise<void> {
     await this.checkLimit(identifier, this.REGISTER_CONFIG);
+  }
+
+  /**
+   * Generic rate-limit check — callable by any module via DI.
+   * Key pattern: `rl:{slug}:{identifier}` per REDIS_SCHEMA.md §11.
+   *
+   * @param slug      - endpoint identifier (e.g. 'drivers_location')
+   * @param identifier - unique key per caller (userId, IP, etc.)
+   * @param limit     - max requests in the window
+   * @param windowSeconds - window duration in seconds
+   */
+  async check(
+    slug: string,
+    identifier: string,
+    limit: number,
+    windowSeconds: number,
+  ): Promise<void> {
+    await this.checkLimit(identifier, { slug, limit, windowSeconds });
   }
 
   /**
