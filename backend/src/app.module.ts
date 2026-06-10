@@ -28,6 +28,7 @@ import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 
 // Feature modules
 import { AuthModule } from '@modules/auth/auth.module';
+import { UsersModule } from '@modules/users/users.module';
 
 @Module({
   imports: [
@@ -45,7 +46,9 @@ import { AuthModule } from '@modules/auth/auth.module';
     // ── Feature Modules (added per ROADMAP.md phases) ─────────────────────────
     // Phase 2A: Authentication Foundation
     AuthModule,
-    // Phase 2B: UsersModule, DriversModule
+    // Phase 2B: Users
+    UsersModule,
+    // Phase 2B remaining: DriversModule
     // Phase 3: RidesModule
     // Phase 4: MatchingModule
     // Phase 5: (realtime — already wired via GatewayModule)

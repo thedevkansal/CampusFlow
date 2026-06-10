@@ -87,4 +87,19 @@ export class UsersRepository {
       },
     });
   }
+
+  /**
+   * Update a user's display name.
+   * Only `name` is updatable — email, role, and id are immutable.
+   * `updatedAt` is refreshed automatically by Prisma's @updatedAt directive.
+   *
+   * Source: docs/RBAC.md — PATCH /users/profile ownership check
+   * Source: docs/ENGINEERING_RULES.md — "Repository pattern"
+   */
+  async updateName(id: string, name: string): Promise<User> {
+    return this.prisma.user.update({
+      where: { id },
+      data: { name },
+    });
+  }
 }
