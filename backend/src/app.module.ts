@@ -26,6 +26,11 @@ import { HealthModule } from '@modules/health/health.module';
 // Global providers
 import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 
+// Feature modules
+import { AuthModule } from '@modules/auth/auth.module';
+import { UsersModule } from '@modules/users/users.module';
+import { DriversModule } from '@modules/drivers/drivers.module';
+
 @Module({
   imports: [
     // ── Infrastructure (must load first) ──────────────────────────────────────
@@ -40,7 +45,12 @@ import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
     HealthModule,
 
     // ── Feature Modules (added per ROADMAP.md phases) ─────────────────────────
-    // Phase 2: AuthModule, UsersModule, DriversModule
+    // Phase 2A: Authentication Foundation
+    AuthModule,
+    // Phase 2B: Users
+    UsersModule,
+    // Phase 2C: Drivers
+    DriversModule,
     // Phase 3: RidesModule
     // Phase 4: MatchingModule
     // Phase 5: (realtime — already wired via GatewayModule)

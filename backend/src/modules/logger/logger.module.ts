@@ -29,15 +29,15 @@ const devFormat = combine(
     const ctx = context ? `[${String(context)}] ` : '';
     const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
     const stackStr = stack ? `\n${String(stack)}` : '';
-    return `${String(ts)} ${level}: ${ctx}${String(message)}${metaStr}${stackStr}`;
+    const msg =
+      typeof message === 'object' && message !== null
+        ? JSON.stringify(message, null, 2)
+        : String(message);
+    return `${String(ts)} ${level}: ${ctx}${msg}${metaStr}${stackStr}`;
   }),
 );
 
-const prodFormat = combine(
-  timestamp(),
-  errors({ stack: true }),
-  json(),
-);
+const prodFormat = combine(timestamp(), errors({ stack: true }), json());
 
 @Global()
 @Module({
