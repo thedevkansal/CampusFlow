@@ -1,0 +1,363 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma Schema — CampusFlow
+// Source of truth: docs/DATABASE.md, docs/RIDE_STATE_MACHINE.md,
+//                  docs/RBAC.md, docs/REDIS_SCHEMA.md
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+  ADMIN
+}
+
+enum DriverStatus {
+  ONLINE
+  OFFLINE
+  BUSY
+}
+
+// All 12 states defined in docs/RIDE_STATE_MACHINE.md
+enum RideStatus {
+  REQUESTED
+  SEARCHING
+  ASSIGNED
+  ACCEPTED
+  ARRIVING
+  IN_PROGRESS
+  COMPLETED
+  NO_DRIVER_FOUND
+  TIMED_OUT
+  PASSENGER_CANCELLED
+  DRIVER_CANCELLED
+  DISPUTED
+}
+
+// All event types emitted during the ride lifecycle
+enum RideEventType {
+  REQUESTED
+  SEARCHING
+  ASSIGNED
+  ACCEPTED
+  ARRIVING
+  STARTED
+  COMPLETED
+  NO_DRIVER_FOUND
+  TIMED_OUT
+  PASSENGER_CANCELLED
+  DRIVER_CANCELLED
+  DISPUTED
+  REMATCHED
+}
+
+enum CancelledBy {
+  PASSENGER
+  DRIVER
+}
+
+enum NotificationType {
+  RIDE_ASSIGNED
+  RIDE_ACCEPTED
+  RIDE_ARRIVING
+  RIDE_STARTED
+  RIDE_COMPLETED
+  RIDE_CANCELLED
+  RIDE_NO_DRIVER
+  RIDE_TIMED_OUT
+  RIDE_DISPUTED
+  DRIVER_RATED
+  EARNINGS_UPDATED
+  SYSTEM
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole @default(PASSENGER)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  driver        Driver?
+  rides         Ride[]           @relation("PassengerRides")
+  notifications Notification[]
+  refreshTokens RefreshToken[]
+  adminActions  AdminAction[]    @relation("AdminActionActor")
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ─── Refresh Tokens ──────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  tokenFamily String   @map("token_family") @db.VarChar(255)
+  tokenHash   String   @map("token_hash") @db.VarChar(255)
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  revokedAt   DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenFamily])
+  @@map("refresh_tokens")
+}
+
+// ─── Drivers ─────────────────────────────────────────────────────────────────
+
+model Driver {
+  id            String       @id @default(uuid()) @db.Uuid
+  userId        String       @unique @map("user_id") @db.Uuid
+  vehicleNumber String       @map("vehicle_number") @db.VarChar(20)
+  vehicleModel  String?      @map("vehicle_model") @db.VarChar(100)
+  vehicleColor  String?      @map("vehicle_color") @db.VarChar(50)
+  rating        Decimal      @default(5.0) @db.Decimal(3, 2)
+  totalRatings  Int          @default(0) @map("total_ratings")
+  status        DriverStatus @default(OFFLINE)
+  isVerified    Boolean      @default(false) @map("is_verified")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location          DriverLocation?
+  assignments       RideAssignment[]
+  ratings           Rating[]
+  earnings          DriverEarning[]
+  cancellationReasons CancellationReason[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("drivers")
+}
+
+// ─── Driver Locations ────────────────────────────────────────────────────────
+
+model DriverLocation {
+  id        String   @id @default(uuid()) @db.Uuid
+  driverId  String   @unique @map("driver_id") @db.Uuid
+  latitude  Decimal  @db.Decimal(10, 7)
+  longitude Decimal  @db.Decimal(10, 7)
+  heading   Decimal? @db.Decimal(5, 2)
+  speed     Decimal? @db.Decimal(6, 2)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  // Composite index for geospatial queries (PostGIS GIST index applied via migration)
+  @@index([driverId])
+  @@index([latitude, longitude])
+  @@map("driver_locations")
+}
+
+// ─── Rides ───────────────────────────────────────────────────────────────────
+
+model Ride {
+  id             String     @id @default(uuid()) @db.Uuid
+  passengerId    String     @map("passenger_id") @db.Uuid
+  pickupLat      Decimal    @map("pickup_lat") @db.Decimal(10, 7)
+  pickupLng      Decimal    @map("pickup_lng") @db.Decimal(10, 7)
+  pickupAddress  String?    @map("pickup_address") @db.VarChar(255)
+  destLat        Decimal    @map("destination_lat") @db.Decimal(10, 7)
+  destLng        Decimal    @map("destination_lng") @db.Decimal(10, 7)
+  destAddress    String?    @map("destination_address") @db.VarChar(255)
+  status         RideStatus @default(REQUESTED)
+  requestedAt    DateTime   @default(now()) @map("requested_at")
+  completedAt    DateTime?  @map("completed_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  passenger           User                @relation("PassengerRides", fields: [passengerId], references: [id])
+  assignment          RideAssignment?
+  events              RideEvent[]
+  fare                RideFare?
+  rating              Rating?
+  cancellationReasons CancellationReason[]
+
+  @@index([passengerId])
+  @@index([status])
+  @@index([status, requestedAt])
+  @@map("rides")
+}
+
+// ─── Ride Assignments ────────────────────────────────────────────────────────
+
+model RideAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  rideId     String    @unique @map("ride_id") @db.Uuid
+  driverId   String    @map("driver_id") @db.Uuid
+  assignedAt DateTime  @default(now()) @map("assigned_at")
+  acceptedAt DateTime? @map("accepted_at")
+
+  ride   Ride   @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@index([rideId])
+  @@index([driverId])
+  @@index([driverId, acceptedAt])
+  @@map("ride_assignments")
+}
+
+// ─── Ride Events (Immutable Event Log) ───────────────────────────────────────
+
+model RideEvent {
+  id        String        @id @default(uuid()) @db.Uuid
+  rideId    String        @map("ride_id") @db.Uuid
+  eventType RideEventType @map("event_type")
+  payload   Json?
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([rideId])
+  @@index([rideId, createdAt])
+  @@map("ride_events")
+}
+
+// ─── Ride Fare ───────────────────────────────────────────────────────────────
+
+model RideFare {
+  id           String   @id @default(uuid()) @db.Uuid
+  rideId       String   @unique @map("ride_id") @db.Uuid
+  amount       Decimal  @db.Decimal(10, 2)
+  currency     String   @default("INR") @db.VarChar(3)
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@map("ride_fares")
+}
+
+// ─── Cancellation Reasons ────────────────────────────────────────────────────
+
+model CancellationReason {
+  id          String      @id @default(uuid()) @db.Uuid
+  rideId      String      @map("ride_id") @db.Uuid
+  driverId    String?     @map("driver_id") @db.Uuid
+  cancelledBy CancelledBy @map("cancelled_by")
+  reasonCode  String      @map("reason_code") @db.VarChar(50)
+  reasonText  String?     @map("reason_text") @db.VarChar(200)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  ride   Ride    @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driver Driver? @relation(fields: [driverId], references: [id])
+
+  @@index([rideId])
+  @@map("cancellation_reasons")
+}
+
+// ─── Ratings ─────────────────────────────────────────────────────────────────
+
+model Rating {
+  id          String   @id @default(uuid()) @db.Uuid
+  rideId      String   @unique @map("ride_id") @db.Uuid
+  driverId    String   @map("driver_id") @db.Uuid
+  passengerId String   @map("passenger_id") @db.Uuid
+  rating      Int      @db.SmallInt // 1–5
+  comment     String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  ride   Ride   @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@map("ratings")
+}
+
+// ─── Driver Earnings ─────────────────────────────────────────────────────────
+
+model DriverEarning {
+  id        String   @id @default(uuid()) @db.Uuid
+  driverId  String   @map("driver_id") @db.Uuid
+  rideId    String   @map("ride_id") @db.Uuid
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String   @default("INR") @db.VarChar(3)
+  earnedAt  DateTime @default(now()) @map("earned_at")
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@index([driverId, earnedAt])
+  @@map("driver_earnings")
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String           @db.VarChar(255)
+  body      String           @db.VarChar(1000)
+  payload   Json?
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─── Analytics Events ────────────────────────────────────────────────────────
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventName String   @map("event_name") @db.VarChar(100)
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([eventName, createdAt])
+  @@map("analytics_events")
+}
+
+// ─── Demand Predictions ──────────────────────────────────────────────────────
+
+model DemandPrediction {
+  id             String   @id @default(uuid()) @db.Uuid
+  zone           String   @db.VarChar(100)
+  predictionTime DateTime @map("prediction_time")
+  predictedRides Int      @map("predicted_rides")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([zone, predictionTime])
+  @@map("demand_predictions")
+}
+
+// ─── Admin Actions (Audit Log) ───────────────────────────────────────────────
+
+model AdminAction {
+  id         String   @id @default(uuid()) @db.Uuid
+  adminId    String   @map("admin_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  targetId   String?  @map("target_id") @db.Uuid
+  targetType String?  @map("target_type") @db.VarChar(50)
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  admin User @relation("AdminActionActor", fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([action, createdAt])
+  @@map("admin_actions")
+}

@@ -1,0 +1,115 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CampusFlow — docker-compose.yml
+# Local development stack
+#
+# Services:
+#   - backend  (NestJS API on port 3001)
+#   - postgres  (PostgreSQL 16 on port 5432)
+#   - redis     (Redis 7 on port 6379)
+#
+# Usage:
+#   cp backend/.env.example backend/.env
+#   # Fill in values in backend/.env
+#   docker compose up -d postgres redis
+#   cd backend && npm run start:dev
+#
+# For full containerised stack:
+#   docker compose up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: campusflow_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: campusflow
+      POSTGRES_PASSWORD: campusflow_dev
+      POSTGRES_DB: campusflow
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campusflow -d campusflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - campusflow_net
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: campusflow_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - campusflow_net
+
+  # ── Backend (NestJS) ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runner
+    container_name: campusflow_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override URLs to use Docker service names
+      DATABASE_URL: postgresql://campusflow:campusflow_dev@postgres:5432/campusflow?schema=public
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    volumes:
+      - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - campusflow_net
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  campusflow_net:
+    driver: bridge
