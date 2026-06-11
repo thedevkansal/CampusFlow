@@ -30,6 +30,7 @@ import { GlobalExceptionFilter } from '@common/filters/global-exception.filter';
 import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
 import { DriversModule } from '@modules/drivers/drivers.module';
+import { RidesModule } from '@modules/rides/rides.module';
 
 @Module({
   imports: [
@@ -51,7 +52,8 @@ import { DriversModule } from '@modules/drivers/drivers.module';
     UsersModule,
     // Phase 2C: Drivers
     DriversModule,
-    // Phase 3: RidesModule
+    // Phase 3A: Rides (foundation — create, list, detail, cancel)
+    RidesModule,
     // Phase 4: MatchingModule
     // Phase 5: (realtime — already wired via GatewayModule)
     // Phase 7: AnalyticsModule
