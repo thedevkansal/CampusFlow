@@ -17,12 +17,13 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@modules/auth/auth.module';
 import { DriversModule } from '@modules/drivers/drivers.module';
+import { GatewayModule } from '@modules/gateway/gateway.module';
 import { RidesController } from './rides.controller';
 import { RidesService } from './rides.service';
 import { RidesRepository } from './rides.repository';
 
 @Module({
-  imports: [AuthModule, DriversModule],
+  imports: [AuthModule, DriversModule, GatewayModule],
   controllers: [RidesController],
   providers: [RidesService, RidesRepository],
   exports: [RidesRepository],

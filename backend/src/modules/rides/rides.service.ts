@@ -35,6 +35,7 @@ import { CancelDriverDto } from './dto/cancel-driver.dto';
 import { DriversRepository } from '@modules/drivers/drivers.repository';
 import { RedisService } from '@modules/redis/redis.service';
 import { QUEUE_NAMES, JOB_NAMES, QUEUE_JOB_OPTIONS } from '@modules/queue/queue.constants';
+import { RideEventsService } from '@modules/gateway/ride-events.service';
 import { Role } from '@common/types';
 
 // ─── Response Types ───────────────────────────────────────────────────────────
@@ -79,6 +80,7 @@ export class RidesService {
     private readonly ridesRepository: RidesRepository,
     private readonly driversRepository: DriversRepository,
     private readonly redis: RedisService,
+    private readonly rideEventsService: RideEventsService,
     @InjectQueue(QUEUE_NAMES.RIDE_MATCHING) private readonly rideMatchingQueue: Queue,
   ) {}
 
@@ -346,6 +348,9 @@ export class RidesService {
       await this.redis.del(this.redis.keys.rideActive(rideId));
     }
 
+    await this.rideEventsService.emitRideCancelled(
+      rideId, passengerId, assignedDriverId, 'PASSENGER', cancelled.status,
+    );
     this.logger.log(
       `Ride cancelled by passenger: rideId=${rideId} passengerId=${passengerId} reason=${dto.reasonCode}`,
     );
@@ -472,6 +477,7 @@ export class RidesService {
     const timeoutJob = await this.rideMatchingQueue.getJob(`acceptance-timeout:${rideId}`);
     await timeoutJob?.remove();
 
+    this.rideEventsService.emitRideAccepted(rideId, ride.passengerId, driverId);
     this.logger.log(`Ride accepted: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
   }
@@ -492,6 +498,7 @@ export class RidesService {
     }
 
     const updated = await this.ridesRepository.arriveRide(rideId);
+    this.rideEventsService.emitRideUpdated(rideId, ride.passengerId, driverId, 'ARRIVING');
     this.logger.log(`Driver arriving: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
   }
@@ -512,6 +519,7 @@ export class RidesService {
     }
 
     const updated = await this.ridesRepository.startRide(rideId);
+    this.rideEventsService.emitRideUpdated(rideId, ride.passengerId, driverId, 'IN_PROGRESS');
     this.logger.log(`Ride started: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
   }
@@ -540,6 +548,7 @@ export class RidesService {
     await this.redis.del(this.redis.keys.rideActive(rideId));
     await this.redis.set(this.redis.keys.driverStatus(driverId), 'ONLINE', 60);
 
+    await this.rideEventsService.emitRideCompleted(rideId, ride.passengerId, driverId);
     this.logger.log(`Ride completed: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
   }
@@ -577,6 +586,9 @@ export class RidesService {
       await this.redis.expire(this.redis.keys.driverCancellationCount(driverId), 86400);
     }
 
+    await this.rideEventsService.emitRideCancelled(
+      rideId, ride.passengerId, driverId, 'DRIVER', updated.status,
+    );
     this.logger.log(`Ride cancelled by driver: rideId=${rideId} driverId=${driverId} reason=${dto.reasonCode}`);
     return this.rideToResponse(updated);
   }

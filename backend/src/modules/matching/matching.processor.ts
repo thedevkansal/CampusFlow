@@ -23,6 +23,7 @@ import { MatchingService } from './matching.service';
 import { MatchingRepository } from './matching.repository';
 import { RedisService } from '@modules/redis/redis.service';
 import { AppConfigService } from '@common/config/app-config.service';
+import { RideEventsService } from '@modules/gateway/ride-events.service';
 import { QUEUE_NAMES, JOB_NAMES } from '@modules/queue/queue.constants';
 
 // ── Job payload interfaces ────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ export class MatchingProcessor extends WorkerHost {
     private readonly matchingRepository: MatchingRepository,
     private readonly redis: RedisService,
     private readonly config: AppConfigService,
+    private readonly rideEventsService: RideEventsService,
     @InjectQueue(QUEUE_NAMES.RIDE_MATCHING) private readonly queue: Queue,
   ) {
     super();
@@ -154,6 +156,7 @@ export class MatchingProcessor extends WorkerHost {
       // Release ride lock — matching is complete
       await this.redis.del(this.redis.keys.rideLock(rideId));
 
+      await this.rideEventsService.emitRideAssigned(rideId, job.data.passengerId, candidate.driverId);
       this.logger.log(
         `Ride assigned: rideId=${rideId} driverId=${candidate.driverId} ` +
           `score=${candidate.score.toFixed(3)} distKm=${candidate.distanceKm.toFixed(2)}`,

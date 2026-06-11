@@ -15,15 +15,16 @@
 
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@modules/auth/auth.module';
+import { GatewayModule } from '@modules/gateway/gateway.module';
 import { DriversController } from './drivers.controller';
 import { DriversService } from './drivers.service';
 import { DriversRepository } from './drivers.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, GatewayModule],
   controllers: [DriversController],
   providers: [DriversService, DriversRepository],
-  exports: [DriversRepository],
+  exports: [DriversRepository, DriversService],
 })
 export class DriversModule {}
 

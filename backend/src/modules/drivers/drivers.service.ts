@@ -21,6 +21,7 @@ import { DriverStatus } from '@prisma/client';
 import { DriversRepository, DriverWithLocation } from './drivers.repository';
 import { RateLimitService } from '@modules/auth/rate-limit.service';
 import { RedisService } from '@modules/redis/redis.service';
+import { RideEventsService } from '@modules/gateway/ride-events.service';
 import { RegisterDriverDto } from './dto/register-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
@@ -64,6 +65,7 @@ export class DriversService {
     private readonly driversRepository: DriversRepository,
     private readonly rateLimitService: RateLimitService,
     private readonly redis: RedisService,
+    private readonly rideEventsService: RideEventsService,
   ) {}
 
   /**
@@ -242,6 +244,18 @@ export class DriversService {
       updated_at: new Date().toISOString(),
     });
     await this.redis.expire(locationKey, DRIVER_LOCATION_TTL);
+
+    // Emit location update to active ride passenger (if any)
+    const activeRideRaw = await this.redis.get(this.redis.keys.driverActiveRide(driver.id));
+    if (activeRideRaw) {
+      const { rideId } = JSON.parse(activeRideRaw) as {
+        rideId: string;
+        passengerId: string;
+      };
+      this.rideEventsService.emitDriverLocationUpdated(
+        rideId, driver.id, dto.latitude, dto.longitude,
+      );
+    }
 
     return {
       latitude: location.latitude.toString(),

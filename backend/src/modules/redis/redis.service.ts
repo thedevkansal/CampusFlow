@@ -78,6 +78,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     userSocket: (userId: string) => `user:socket:${userId}`,
     bullDedup: (queueName: string, entityId: string) => `bull:dedup:${queueName}:${entityId}`,
     demandHeatmap: () => `demand:heatmap:current`,
+    /** JSON string { rideId, passengerId } — set on ASSIGNED, deleted on terminal */
+    driverActiveRide: (driverId: string) => `driver:active_ride:${driverId}`,
   } as const;
 
   // ─── Typed Wrappers ───────────────────────────────────────────────────────────
