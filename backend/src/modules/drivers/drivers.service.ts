@@ -20,9 +20,16 @@ import {
 import { DriverStatus } from '@prisma/client';
 import { DriversRepository, DriverWithLocation } from './drivers.repository';
 import { RateLimitService } from '@modules/auth/rate-limit.service';
+import { RedisService } from '@modules/redis/redis.service';
 import { RegisterDriverDto } from './dto/register-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+
+/** driver:status TTL in seconds (REDIS_SCHEMA.md §1 — sliding 60s) */
+const DRIVER_STATUS_TTL = 60;
+
+/** driver:location TTL in seconds (REDIS_SCHEMA.md §2 — sliding 30s) */
+const DRIVER_LOCATION_TTL = 30;
 
 
 /** Rate limit: 120 location updates / 60s per driver (RBAC.md §Driver Endpoints) */
@@ -56,6 +63,7 @@ export class DriversService {
   constructor(
     private readonly driversRepository: DriversRepository,
     private readonly rateLimitService: RateLimitService,
+    private readonly redis: RedisService,
   ) {}
 
   /**
@@ -150,6 +158,11 @@ export class DriversService {
   async goOnline(userId: string): Promise<{ status: DriverStatus }> {
     const driver = await this.requireDriverRecord(userId);
     await this.driversRepository.updateStatus(driver.id, DriverStatus.ONLINE);
+
+    // Redis writes — required by REDIS_SCHEMA.md §1 (driver:status) and §4 (drivers:online)
+    await this.redis.set(this.redis.keys.driverStatus(driver.id), 'ONLINE', DRIVER_STATUS_TTL);
+    await this.redis.sadd(this.redis.keys.driversOnline(), driver.id);
+
     this.logger.log(`Driver online: driverId=${driver.id}`);
     return { status: DriverStatus.ONLINE };
   }
@@ -162,6 +175,12 @@ export class DriversService {
   async goOffline(userId: string): Promise<{ status: DriverStatus }> {
     const driver = await this.requireDriverRecord(userId);
     await this.driversRepository.updateStatus(driver.id, DriverStatus.OFFLINE);
+
+    // Redis writes — REDIS_SCHEMA.md §1, §3 (ZREM from geo set), §4 (SREM from online set)
+    await this.redis.del(this.redis.keys.driverStatus(driver.id));
+    await this.redis.srem(this.redis.keys.driversOnline(), driver.id);
+    await this.redis.geoRemove(this.redis.keys.driversGeo(), driver.id);
+
     this.logger.log(`Driver offline: driverId=${driver.id}`);
     return { status: DriverStatus.OFFLINE };
   }
@@ -199,6 +218,30 @@ export class DriversService {
       heading: dto.heading,
       speed: dto.speed,
     });
+
+    // Redis GEO write — REDIS_SCHEMA.md §3 (drivers:geo)
+    // Note: GEOADD uses (longitude, latitude) order
+    await this.redis.geoAdd(
+      this.redis.keys.driversGeo(),
+      dto.longitude,
+      dto.latitude,
+      driver.id,
+    );
+
+    // Slide the driver:status TTL on every location heartbeat (REDIS_SCHEMA.md §1)
+    const currentStatus = await this.redis.get(this.redis.keys.driverStatus(driver.id));
+    if (currentStatus) {
+      await this.redis.set(this.redis.keys.driverStatus(driver.id), currentStatus, DRIVER_STATUS_TTL);
+    }
+
+    // Slide driver:location hash TTL (REDIS_SCHEMA.md §2)
+    const locationKey = this.redis.keys.driverLocation(driver.id);
+    await this.redis.hset(locationKey, {
+      lat: dto.latitude.toString(),
+      lng: dto.longitude.toString(),
+      updated_at: new Date().toISOString(),
+    });
+    await this.redis.expire(locationKey, DRIVER_LOCATION_TTL);
 
     return {
       latitude: location.latitude.toString(),

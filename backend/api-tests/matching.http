@@ -1,0 +1,416 @@
+@baseUrl = http://localhost:3001/api/v1
+@passengerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5MjczOGNjZi02YzNhLTQ0MjAtOWQ5My02OWY1NzcxNzRhMTgiLCJlbWFpbCI6ImRldkB0ZXN0LmNvbSIsInJvbGUiOiJQQVNTRU5HRVIiLCJqdGkiOiIzYWJkMzMwZS1kMzM3LTQ5MmYtOTI3MC00MTRjNGNjMjFhZTIiLCJpYXQiOjE3ODEyMDQzMDMsImV4cCI6MTc4MTIwNTIwM30.9wtU2ixcNfvhOtmBJmsi6CQgxBkmn_rY6j5uz8RUyRQ
+@driverToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjM2Q1YTc1My0wZDUzLTRhYTEtOTcxOC04Y2NmMTM2ZTZjZGUiLCJlbWFpbCI6ImRyaXZlckB0ZXN0LmNvbSIsInJvbGUiOiJEUklWRVIiLCJkcml2ZXJJZCI6ImVkN2M0NjBmLWE5MTgtNDYzOC05YzIzLTkxNzE2N2EyOTg1NyIsImp0aSI6ImNkNTJlMDgzLWI5MDUtNGM2Yi1hOTgwLTExYjIwNjM3ODE3YSIsImlhdCI6MTc4MTIwNDMzMiwiZXhwIjoxNzgxMjA1MjMyfQ.IQYuwsze8pc-fhJIG95kVeM-nnF6GMniQA68wUR2QBo
+@rideId = 410c18d0-65bb-4403-b74b-0e68a508e167
+##################################################
+
+### LOGIN PASSENGER
+
+##################################################
+
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+"email": "dev@test.com",
+"password": "StrongPassword123!"
+}
+
+###
+
+# EXPECTED:
+
+# 200 OK
+
+# Copy passenger userId if needed
+
+##################################################
+
+### LOGIN DRIVER
+
+##################################################
+
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+"email": "driver@test.com",
+"password": "StrongPassword123!"
+}
+
+###
+
+# EXPECTED:
+
+# 200 OK
+
+# Copy driver userId if needed
+
+##################################################
+
+### DRIVER GO ONLINE
+
+##################################################
+
+POST {{baseUrl}}/drivers/online
+Authorization: Bearer {{driverToken}}
+
+###
+
+# EXPECTED:
+
+# status = ONLINE
+
+##################################################
+
+### DRIVER UPDATE LOCATION
+
+##################################################
+
+PATCH {{baseUrl}}/drivers/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+"latitude": 30.0668,
+"longitude": 79.0193
+}
+
+###
+
+# EXPECTED:
+
+# 200 OK
+
+# Driver added to Redis GEO index
+
+##################################################
+
+### CREATE RIDE
+
+##################################################
+
+POST {{baseUrl}}/rides
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"pickupLat": 30.0668,
+"pickupLng": 79.0193,
+"destLat": 30.3165,
+"destLng": 78.0322,
+"pickupAddress": "IIT Roorkee",
+"destAddress": "Haridwar"
+}
+
+###
+
+# EXPECTED IMMEDIATELY:
+
+# status = SEARCHING
+
+#
+
+# Save rideId automatically
+
+##################################################
+
+### GET RIDE (FIRST CHECK)
+
+##################################################
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+# EXPECTED:
+
+#
+
+# SEARCHING
+
+# OR
+
+# ASSIGNED
+
+#
+
+# Depends on worker timing
+
+##################################################
+
+### WAIT 2-3 SECONDS
+
+### THEN RUN AGAIN
+
+##################################################
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+# EXPECTED:
+
+#
+
+# status = ASSIGNED
+
+#
+
+# Verify:
+
+# assignedDriverId exists
+
+# RideAssignment row created
+
+##################################################
+
+### DRIVER ACCEPT
+
+##################################################
+
+POST {{baseUrl}}/rides/{{rideId}}/accept
+Authorization: Bearer {{driverToken}}
+
+###
+
+# EXPECTED:
+
+#
+
+# status = ACCEPTED
+
+#
+
+# Redis timeout job removed
+
+# driver lock removed
+
+##################################################
+
+### DRIVER ARRIVE
+
+##################################################
+
+POST {{baseUrl}}/rides/{{rideId}}/arrive
+Authorization: Bearer {{driverToken}}
+
+###
+
+# EXPECTED:
+
+# status = ARRIVED
+
+##################################################
+
+### DRIVER START
+
+##################################################
+
+POST {{baseUrl}}/rides/{{rideId}}/start
+Authorization: Bearer {{driverToken}}
+
+###
+
+# EXPECTED:
+
+# status = IN_PROGRESS
+
+##################################################
+
+### DRIVER COMPLETE
+
+##################################################
+
+POST {{baseUrl}}/rides/{{rideId}}/complete
+Authorization: Bearer {{driverToken}}
+
+###
+
+# EXPECTED:
+
+#
+
+# status = COMPLETED
+
+#
+
+# RideFare created
+
+# DriverEarning created
+
+# Driver ONLINE again
+
+##################################################
+
+### FINAL VERIFY
+
+##################################################
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+# EXPECTED:
+
+#
+
+# COMPLETED
+
+#
+
+# fare present
+
+# events present
+
+# assignment present
+
+##################################################
+##################################################
+
+### NO DRIVER TEST
+
+##################################################
+##################################################
+
+### IMPORTANT:
+
+### First make driver OFFLINE
+
+POST {{baseUrl}}/drivers/offline
+Authorization: Bearer {{driverToken}}
+
+###
+
+# EXPECTED:
+
+# status = OFFLINE
+
+##################################################
+
+### CREATE RIDE (NO DRIVER)
+
+##################################################
+
+POST {{baseUrl}}/rides
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"pickupLat": 30.0668,
+"pickupLng": 79.0193,
+"destLat": 30.3165,
+"destLng": 78.0322,
+"pickupAddress": "IIT Roorkee",
+"destAddress": "Haridwar"
+}
+
+###
+
+# EXPECTED:
+
+# SEARCHING
+
+##################################################
+
+### WAIT WORKER
+
+##################################################
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+# EXPECTED:
+
+#
+
+# NO_DRIVER_FOUND
+
+#
+
+# Event exists:
+
+# SEARCHING -> NO_DRIVER_FOUND
+
+##################################################
+##################################################
+
+### ACCEPTANCE TIMEOUT TEST
+
+##################################################
+##################################################
+
+### DRIVER ONLINE AGAIN
+
+POST {{baseUrl}}/drivers/online
+Authorization: Bearer {{driverToken}}
+
+###
+
+PATCH {{baseUrl}}/drivers/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+"latitude": 30.0668,
+"longitude": 79.0193
+}
+
+###
+
+POST {{baseUrl}}/rides
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"pickupLat": 30.0668,
+"pickupLng": 79.0193,
+"destLat": 30.3165,
+"destLng": 78.0322,
+"pickupAddress": "IIT Roorkee",
+"destAddress": "Haridwar"
+}
+
+###
+
+# WAIT FOR ASSIGNED
+
+# DO NOT ACCEPT
+
+##################################################
+
+### AFTER ACCEPTANCE WINDOW EXPIRES
+
+##################################################
+
+POST {{baseUrl}}/rides/{{rideId}}/cancel
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"reasonCode":"PASSENGER_CHANGED_MIND"
+}
+
+###
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+# EXPECTED:
+
+#
+
+# TIMED_OUT
+
+#
+
+# Driver ONLINE again
+
+# Locks removed
+
+# Timeout job removed

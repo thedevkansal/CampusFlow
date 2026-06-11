@@ -263,6 +263,26 @@ export class RidesRepository {
   }
 
   /**
+   * Transition an existing ride from REQUESTED → SEARCHING.
+   * Atomically updates status and appends the SEARCHING event.
+   * Called by RidesService.createRide() immediately after create().
+   *
+   * Source: docs/RIDE_STATE_MACHINE.md §REQUESTED→SEARCHING
+   */
+  async transitionToSearching(rideId: string): Promise<Ride> {
+    return this.prisma.$transaction(async (tx) => {
+      const ride = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.SEARCHING },
+      });
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.SEARCHING },
+      });
+      return ride;
+    });
+  }
+
+  /**
    * Insert a standalone RideEvent. Used for future transitions.
    */
   async insertEvent(rideId: string, eventType: RideEventType, payload?: object): Promise<RideEvent> {
@@ -318,20 +338,40 @@ export class RidesRepository {
 
   /**
    * Transition ASSIGNED → ACCEPTED.
-   * Atomically updates ride status, sets assignment.acceptedAt, and logs event.
+   * Uses SELECT FOR UPDATE SKIP LOCKED on ride_assignments to safely handle
+   * concurrent accept requests from two connections for the same driver.
    *
+   * Returns the updated Ride on success.
+   * Returns null if the row was already locked (another transaction won the race
+   * and accepted first) — caller should treat this as RIDE_ALREADY_ACCEPTED.
+   *
+   * Source: docs/MATCHING_ENGINE.md §Step 5 — SKIP LOCKED acceptance deduplication
    * Source: docs/RIDE_STATE_MACHINE.md — ASSIGNED → ACCEPTED
    */
-  async acceptRide(rideId: string): Promise<Ride> {
+  async acceptRide(rideId: string, driverId: string): Promise<Ride | null> {
     return this.prisma.$transaction(async (tx) => {
+      // Try to lock the ride_assignments row. SKIP LOCKED means: if another
+      // transaction already holds this row, return empty immediately (don't wait).
+      const rows = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+        FROM ride_assignments
+        WHERE ride_id = ${rideId}::uuid
+          AND driver_id = ${driverId}::uuid
+          AND accepted_at IS NULL
+        FOR UPDATE SKIP LOCKED
+      `;
+
+      if (rows.length === 0) return null; // Race lost — already accepted
+
+      await tx.$executeRaw`
+        UPDATE ride_assignments
+        SET accepted_at = NOW()
+        WHERE ride_id = ${rideId}::uuid AND driver_id = ${driverId}::uuid
+      `;
+
       const ride = await tx.ride.update({
         where: { id: rideId },
         data: { status: RideStatus.ACCEPTED },
-      });
-
-      await tx.rideAssignment.update({
-        where: { rideId },
-        data: { acceptedAt: new Date() },
       });
 
       await tx.rideEvent.create({

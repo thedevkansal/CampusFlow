@@ -100,6 +100,20 @@ export class DriversRepository {
   }
 
   /**
+   * Batch-fetch driver records by a list of driverIds.
+   * Used by MatchingService to retrieve rating data for candidate ranking.
+   * Returns only fields needed for scoring — no location included.
+   *
+   * Source: docs/MATCHING_ENGINE.md §Step 4 — ranking uses driver.rating
+   */
+  async findByDriverIds(driverIds: string[]): Promise<Driver[]> {
+    if (driverIds.length === 0) return [];
+    return this.prisma.driver.findMany({
+      where: { id: { in: driverIds } },
+    });
+  }
+
+  /**
    * Update driver availability status (ONLINE / OFFLINE).
    * Called by goOnline() and goOffline() in service.
    */

@@ -33,6 +33,7 @@ import { CancelRideDto } from './dto/cancel-ride.dto';
 import { CancelDriverDto } from './dto/cancel-driver.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
+import { DevOnlyGuard } from '@common/guards/dev-only.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { Roles } from '@common/decorators/roles.decorator';
 import { AuthenticatedUser, ApiSuccessResponse, Role } from '@common/types';
@@ -155,7 +156,7 @@ export class RidesController {
    */
   @Post(':id/assign')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
+  @UseGuards(DevOnlyGuard, RolesGuard)
   @Roles(Role.DRIVER)
   async assignDriver(
     @Param('id', ParseUUIDPipe) id: string,

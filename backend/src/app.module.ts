@@ -31,6 +31,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
 import { DriversModule } from '@modules/drivers/drivers.module';
 import { RidesModule } from '@modules/rides/rides.module';
+import { MatchingModule } from '@modules/matching/matching.module';
 
 @Module({
   imports: [
@@ -54,7 +55,9 @@ import { RidesModule } from '@modules/rides/rides.module';
     DriversModule,
     // Phase 3A: Rides (foundation — create, list, detail, cancel)
     RidesModule,
-    // Phase 4: MatchingModule
+    // Phase 3C: Matching Engine (BullMQ worker — driver candidate selection + assignment)
+    MatchingModule,
+    // Phase 4: (future)
     // Phase 5: (realtime — already wired via GatewayModule)
     // Phase 7: AnalyticsModule
     // Phase 8: DemandForecastingModule
