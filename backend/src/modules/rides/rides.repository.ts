@@ -14,6 +14,7 @@ import { PrismaService } from '@prisma/prisma.service';
 import {
   CancelledBy,
   Ride,
+  RideAssignment,
   RideEvent,
   RideEventType,
   RideStatus,
@@ -54,7 +55,33 @@ export type RideWithRelations = Ride & {
   passenger: { name: string };
 };
 
-/** Active ride states — ride is not yet in a terminal state */
+/** States from which a driver is permitted to cancel */
+export const DRIVER_CANCELLABLE_STATUSES: RideStatus[] = [
+  RideStatus.ASSIGNED,
+  RideStatus.ACCEPTED,
+  RideStatus.ARRIVING,
+];
+
+/** Fare constants — no external pricing engine in Phase 3B */
+const BASE_FARE = 50;
+const PER_KM_RATE = 12;
+
+/** Haversine distance in km between two lat/lng points */
+function haversineKm(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const ACTIVE_STATUSES: RideStatus[] = [
   RideStatus.REQUESTED,
   RideStatus.SEARCHING,
@@ -245,6 +272,191 @@ export class RidesRepository {
         eventType,
         payload: payload ?? undefined,
       },
+    });
+  }
+
+  // ─── Phase 3B: Assignment & Driver Lifecycle ──────────────────────────────
+
+  /**
+   * Fetch the RideAssignment row for a ride, including the assigned driverId.
+   * Returns null if no assignment exists.
+   */
+  async findAssignmentByRideId(rideId: string): Promise<RideAssignment | null> {
+    return this.prisma.rideAssignment.findUnique({ where: { rideId } });
+  }
+
+  /**
+   * Manually assign a driver to a REQUESTED ride.
+   * Atomically:
+   *   1. Creates RideAssignment row
+   *   2. Updates rides.status = ASSIGNED
+   *   3. Inserts RideEvent(ASSIGNED)
+   *
+   * Source: docs/RIDE_STATE_MACHINE.md — REQUESTED → ASSIGNED
+   */
+  async assignDriver(
+    rideId: string,
+    driverId: string,
+  ): Promise<{ ride: Ride; assignment: RideAssignment }> {
+    return this.prisma.$transaction(async (tx) => {
+      const assignment = await tx.rideAssignment.create({
+        data: { rideId, driverId },
+      });
+
+      const ride = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.ASSIGNED },
+      });
+
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.ASSIGNED, payload: { driverId } },
+      });
+
+      return { ride, assignment };
+    });
+  }
+
+  /**
+   * Transition ASSIGNED → ACCEPTED.
+   * Atomically updates ride status, sets assignment.acceptedAt, and logs event.
+   *
+   * Source: docs/RIDE_STATE_MACHINE.md — ASSIGNED → ACCEPTED
+   */
+  async acceptRide(rideId: string): Promise<Ride> {
+    return this.prisma.$transaction(async (tx) => {
+      const ride = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.ACCEPTED },
+      });
+
+      await tx.rideAssignment.update({
+        where: { rideId },
+        data: { acceptedAt: new Date() },
+      });
+
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.ACCEPTED },
+      });
+
+      return ride;
+    });
+  }
+
+  /**
+   * Transition ACCEPTED → ARRIVING.
+   * Source: docs/RIDE_STATE_MACHINE.md — ACCEPTED → ARRIVING
+   */
+  async arriveRide(rideId: string): Promise<Ride> {
+    return this.prisma.$transaction(async (tx) => {
+      const ride = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.ARRIVING },
+      });
+
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.ARRIVING },
+      });
+
+      return ride;
+    });
+  }
+
+  /**
+   * Transition ARRIVING → IN_PROGRESS.
+   * Source: docs/RIDE_STATE_MACHINE.md — ARRIVING → IN_PROGRESS
+   */
+  async startRide(rideId: string): Promise<Ride> {
+    return this.prisma.$transaction(async (tx) => {
+      const ride = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.IN_PROGRESS },
+      });
+
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.STARTED },
+      });
+
+      return ride;
+    });
+  }
+
+  /**
+   * Transition IN_PROGRESS → COMPLETED.
+   * Atomically:
+   *   1. Updates rides.status + completed_at
+   *   2. Inserts RideEvent(COMPLETED)
+   *   3. Inserts RideFare record (haversine-based flat formula)
+   *   4. Inserts DriverEarning ledger entry
+   *
+   * Fare formula: BASE_FARE + distance_km * PER_KM_RATE
+   *
+   * Source: docs/RIDE_STATE_MACHINE.md — IN_PROGRESS → COMPLETED side effects
+   */
+  async completeRide(rideId: string, driverId: string, ride: Ride): Promise<Ride> {
+    const distanceKm = haversineKm(
+      Number(ride.pickupLat), Number(ride.pickupLng),
+      Number(ride.destLat), Number(ride.destLng),
+    );
+    const fareAmount = parseFloat((BASE_FARE + distanceKm * PER_KM_RATE).toFixed(2));
+
+    return this.prisma.$transaction(async (tx) => {
+      const completed = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.COMPLETED, completedAt: new Date() },
+      });
+
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.COMPLETED },
+      });
+
+      await tx.rideFare.create({
+        data: { rideId, amount: fareAmount, currency: 'INR' },
+      });
+
+      await tx.driverEarning.create({
+        data: { driverId, rideId, amount: fareAmount, currency: 'INR' },
+      });
+
+      return completed;
+    });
+  }
+
+  /**
+   * Transition ASSIGNED/ACCEPTED/ARRIVING → DRIVER_CANCELLED.
+   * Atomically:
+   *   1. Updates rides.status
+   *   2. Inserts RideEvent(DRIVER_CANCELLED)
+   *   3. Inserts CancellationReason
+   *
+   * Source: docs/RIDE_STATE_MACHINE.md — ACCEPTED/ARRIVING → DRIVER_CANCELLED
+   */
+  async cancelByDriver(
+    rideId: string,
+    driverId: string,
+    reasonCode: string,
+    reasonText?: string,
+  ): Promise<Ride> {
+    return this.prisma.$transaction(async (tx) => {
+      const ride = await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.DRIVER_CANCELLED },
+      });
+
+      await tx.rideEvent.create({
+        data: { rideId, eventType: RideEventType.DRIVER_CANCELLED },
+      });
+
+      await tx.cancellationReason.create({
+        data: {
+          rideId,
+          driverId,
+          cancelledBy: CancelledBy.DRIVER,
+          reasonCode,
+          reasonText,
+        },
+      });
+
+      return ride;
     });
   }
 }

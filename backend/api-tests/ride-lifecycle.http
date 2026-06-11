@@ -1,0 +1,65 @@
+@baseUrl = http://localhost:3001/api/v1
+
+@passengerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5MjczOGNjZi02YzNhLTQ0MjAtOWQ5My02OWY1NzcxNzRhMTgiLCJlbWFpbCI6ImRldkB0ZXN0LmNvbSIsInJvbGUiOiJQQVNTRU5HRVIiLCJqdGkiOiIyNWJiZGIxYy1jNDk5LTQ3YTktOThkNC0wZjVhYzc0YThmYzIiLCJpYXQiOjE3ODExNjk4NTksImV4cCI6MTc4MTE3MDc1OX0.hQExPCVaEB9VG19NMuopuCr5uMdOj8YdXYubuuK2C-w
+@driverToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjM2Q1YTc1My0wZDUzLTRhYTEtOTcxOC04Y2NmMTM2ZTZjZGUiLCJlbWFpbCI6ImRyaXZlckB0ZXN0LmNvbSIsInJvbGUiOiJEUklWRVIiLCJkcml2ZXJJZCI6ImVkN2M0NjBmLWE5MTgtNDYzOC05YzIzLTkxNzE2N2EyOTg1NyIsImp0aSI6ImYwMDk2NTU2LWVkNjEtNGE0ZS05MWY0LTYxMjI3ZDdjMzI5ZiIsImlhdCI6MTc4MTE3MDM0MiwiZXhwIjoxNzgxMTcxMjQyfQ.DFyk2mgmlc2o35ZPB-NZ-Td_gMOvuHSlN1snrD24zqk
+@rideId = 1b9ebd63-b356-4139-93a8-d8732493bd64
+
+### 1. Create Ride
+POST {{baseUrl}}/rides
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+  "pickupLat": 30.0668,
+  "pickupLng": 79.0193,
+  "destLat": 30.3165,
+  "destLng": 78.0322,
+  "pickupAddress": "IIT Roorkee",
+  "destAddress": "Haridwar"
+}
+
+
+###
+# Copy rideId from response and replace @rideId above
+
+### 2. Driver Assign Ride
+POST {{baseUrl}}/rides/{{rideId}}/assign
+Authorization: Bearer {{driverToken}}
+
+###
+# Expected:
+# status = ASSIGNED
+
+### 3. Driver Accept Ride
+POST {{baseUrl}}/rides/{{rideId}}/accept
+Authorization: Bearer {{driverToken}}
+
+###
+# Expected:
+# status = ACCEPTED
+
+### 4. Driver Arrive
+POST {{baseUrl}}/rides/{{rideId}}/arrive
+Authorization: Bearer {{driverToken}}
+
+###
+# Expected:
+# status = ARRIVING
+
+### 5. Driver Start Ride
+POST {{baseUrl}}/rides/{{rideId}}/start
+Authorization: Bearer {{driverToken}}
+
+###
+# Expected:
+# status = IN_PROGRESS
+
+### 6. Driver Complete Ride
+POST {{baseUrl}}/rides/{{rideId}}/complete
+Authorization: Bearer {{driverToken}}
+
+###
+# Expected:
+# status = COMPLETED
+# fare generated
+# earnings generated

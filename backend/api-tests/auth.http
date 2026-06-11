@@ -47,7 +47,7 @@ POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-"email": "driver2@test.com",
+"email": "driver@test.com",
 "password": "StrongPassword123!"
 }
 

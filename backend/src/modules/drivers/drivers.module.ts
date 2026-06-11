@@ -23,5 +23,7 @@ import { DriversRepository } from './drivers.repository';
   imports: [AuthModule],
   controllers: [DriversController],
   providers: [DriversService, DriversRepository],
+  exports: [DriversRepository],
 })
 export class DriversModule {}
+

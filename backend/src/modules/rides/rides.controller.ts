@@ -30,11 +30,13 @@ import {
 import { RidesService, RideResponseData } from './rides.service';
 import { CreateRideDto } from './dto/create-ride.dto';
 import { CancelRideDto } from './dto/cancel-ride.dto';
+import { CancelDriverDto } from './dto/cancel-driver.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { Roles } from '@common/decorators/roles.decorator';
 import { AuthenticatedUser, ApiSuccessResponse, Role } from '@common/types';
+import { RideStatus } from '@prisma/client';
 
 @Controller('rides')
 @UseGuards(JwtAuthGuard)
@@ -141,5 +143,112 @@ export class RidesController {
   ): Promise<ApiSuccessResponse<RideResponseData>> {
     const data = await this.ridesService.cancelRide(id, user.id, dto);
     return { success: true, data, message: 'Ride cancelled successfully' };
+  }
+
+  // ─── Phase 3B: Driver Lifecycle ──────────────────────────────────────────
+
+  /**
+   * POST /api/v1/rides/:id/assign
+   *
+   * Temporary manual assignment — stand-in for MatchingModule (Phase 4).
+   * DRIVER only. Driver self-assigns to a REQUESTED ride.
+   */
+  @Post(':id/assign')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async assignDriver(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<{ assignmentId: string; rideId: string; driverId: string; status: RideStatus }>> {
+    const data = await this.ridesService.assignDriver(id, user.id);
+    return { success: true, data, message: 'Driver assigned successfully' };
+  }
+
+  /**
+   * POST /api/v1/rides/:id/accept
+   *
+   * Driver accepts an ASSIGNED ride → ACCEPTED.
+   */
+  @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async acceptRide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RideResponseData>> {
+    const data = await this.ridesService.acceptRide(id, user.id);
+    return { success: true, data, message: 'Ride accepted' };
+  }
+
+  /**
+   * POST /api/v1/rides/:id/arrive
+   *
+   * Driver signals arrival at pickup → ARRIVING.
+   */
+  @Post(':id/arrive')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async arriveRide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RideResponseData>> {
+    const data = await this.ridesService.arriveRide(id, user.id);
+    return { success: true, data, message: 'Driver arriving at pickup' };
+  }
+
+  /**
+   * POST /api/v1/rides/:id/start
+   *
+   * Driver starts the ride → IN_PROGRESS.
+   */
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async startRide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RideResponseData>> {
+    const data = await this.ridesService.startRide(id, user.id);
+    return { success: true, data, message: 'Ride started' };
+  }
+
+  /**
+   * POST /api/v1/rides/:id/complete
+   *
+   * Driver completes the ride → COMPLETED. Creates fare and earnings records.
+   */
+  @Post(':id/complete')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async completeRide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RideResponseData>> {
+    const data = await this.ridesService.completeRide(id, user.id);
+    return { success: true, data, message: 'Ride completed' };
+  }
+
+  /**
+   * POST /api/v1/rides/:id/cancel-driver
+   *
+   * Driver cancels from ASSIGNED/ACCEPTED/ARRIVING → DRIVER_CANCELLED.
+   * Resets driver to ONLINE.
+   */
+  @Post(':id/cancel-driver')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async cancelByDriver(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CancelDriverDto,
+  ): Promise<ApiSuccessResponse<RideResponseData>> {
+    const data = await this.ridesService.cancelByDriver(id, user.id, dto);
+    return { success: true, data, message: 'Ride cancelled by driver' };
   }
 }
