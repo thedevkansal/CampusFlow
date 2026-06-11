@@ -1,0 +1,112 @@
+@baseUrl = http://localhost:3001/api/v1
+
+@driverToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjM2Q1YTc1My0wZDUzLTRhYTEtOTcxOC04Y2NmMTM2ZTZjZGUiLCJlbWFpbCI6ImRyaXZlckB0ZXN0LmNvbSIsInJvbGUiOiJEUklWRVIiLCJkcml2ZXJJZCI6ImVkN2M0NjBmLWE5MTgtNDYzOC05YzIzLTkxNzE2N2EyOTg1NyIsImp0aSI6IjliZGUzMjk3LTI0ZTMtNGJlZC1hNDZhLTI3MTI2ZDM3OTkyMCIsImlhdCI6MTc4MTE2ODU5OCwiZXhwIjoxNzgxMTY5NDk4fQ.i74UJqRKovhCwN3kbzid_Zprf1BkkFU5k-S6P1quo94
+@passengerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5MjczOGNjZi02YzNhLTQ0MjAtOWQ5My02OWY1NzcxNzRhMTgiLCJlbWFpbCI6ImRldkB0ZXN0LmNvbSIsInJvbGUiOiJQQVNTRU5HRVIiLCJqdGkiOiIxZDIwZDRjYi0xMzMzLTQzNWEtYmRjYS1iNjNkZWVjYTFmNTUiLCJpYXQiOjE3ODExNjg2NTksImV4cCI6MTc4MTE2OTU1OX0.Ri3-UIbWh-LuIxH0SMldGzhvjCPI9dJF3cTI3lYjQwA
+
+@rideId = d9b3d738-17b8-4530-a624-2f85270227a7
+
+### Login Passenger
+
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+"email": "dev@test.com",
+"password": "StrongPassword123!"
+}
+
+###
+
+### Login Driver
+
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+"email": "driver@test.com",
+"password": "StrongPassword123!"
+}
+
+###
+
+### Create Ride
+
+POST {{baseUrl}}/rides
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"pickupLat":30.0668,
+"pickupLng":79.0193,
+"destLat":30.3165,
+"destLng":78.0322,
+"pickupAddress":"IIT Roorkee",
+"destAddress":"Haridwar"
+}
+
+###
+
+### Get My Rides
+
+GET {{baseUrl}}/rides
+Authorization: Bearer {{passengerToken}}
+
+###
+
+### Get Active Ride
+
+GET {{baseUrl}}/rides/active
+Authorization: Bearer {{passengerToken}}
+
+###
+
+### Get Ride By Id
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+### Cancel Ride
+
+POST {{baseUrl}}/rides/{{rideId}}/cancel
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"reasonCode":"PASSENGER_CHANGED_MIND"
+}
+
+###
+
+### Cancel Again (422)
+
+POST {{baseUrl}}/rides/{{rideId}}/cancel
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+"reasonCode":"PASSENGER_CHANGED_MIND"
+}
+
+###
+
+### Driver Read Ride (Phase 3A → 403)
+
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{driverToken}}
+
+###
+
+### Driver Create Ride (403)
+
+POST {{baseUrl}}/rides
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+"pickupLat":30.0668,
+"pickupLng":79.0193,
+"destLat":30.3165,
+"destLng":78.0322
+}
