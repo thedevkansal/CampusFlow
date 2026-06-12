@@ -16,12 +16,13 @@
 import { Module } from '@nestjs/common';
 import { DriversModule } from '@modules/drivers/drivers.module';
 import { GatewayModule } from '@modules/gateway/gateway.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { MatchingProcessor } from './matching.processor';
 import { MatchingService } from './matching.service';
 import { MatchingRepository } from './matching.repository';
 
 @Module({
-  imports: [DriversModule, GatewayModule],
+  imports: [DriversModule, GatewayModule, NotificationsModule],
   providers: [MatchingProcessor, MatchingService, MatchingRepository],
 })
 export class MatchingModule {}

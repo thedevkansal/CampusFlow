@@ -113,6 +113,15 @@ export class DriversRepository {
     });
   }
 
+  /** Resolve the User.id for a given Driver.id. Returns null if not found. */
+  async findUserIdByDriverId(driverId: string): Promise<string | null> {
+    const row = await this.prisma.driver.findUnique({
+      where: { id: driverId },
+      select: { userId: true },
+    });
+    return row?.userId ?? null;
+  }
+
   /**
    * Update driver availability status (ONLINE / OFFLINE).
    * Called by goOnline() and goOffline() in service.

@@ -32,6 +32,7 @@ import { UsersModule } from '@modules/users/users.module';
 import { DriversModule } from '@modules/drivers/drivers.module';
 import { RidesModule } from '@modules/rides/rides.module';
 import { MatchingModule } from '@modules/matching/matching.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -57,11 +58,12 @@ import { MatchingModule } from '@modules/matching/matching.module';
     RidesModule,
     // Phase 3C: Matching Engine (BullMQ worker — driver candidate selection + assignment)
     MatchingModule,
-    // Phase 4: (future)
+    // Phase 4B: In-App Notifications
+    NotificationsModule,
     // Phase 5: (realtime — already wired via GatewayModule)
     // Phase 7: AnalyticsModule
     // Phase 8: DemandForecastingModule
-    // Phase 2+: AdminModule, NotificationsModule
+    // Phase 2+: AdminModule
   ],
   providers: [
     // Global exception filter — catches all unhandled exceptions

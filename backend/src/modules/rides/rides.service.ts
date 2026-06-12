@@ -36,6 +36,7 @@ import { DriversRepository } from '@modules/drivers/drivers.repository';
 import { RedisService } from '@modules/redis/redis.service';
 import { QUEUE_NAMES, JOB_NAMES, QUEUE_JOB_OPTIONS } from '@modules/queue/queue.constants';
 import { RideEventsService } from '@modules/gateway/ride-events.service';
+import { NotificationService } from '@modules/notifications/notification.service';
 import { Role } from '@common/types';
 
 // ─── Response Types ───────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export class RidesService {
     private readonly driversRepository: DriversRepository,
     private readonly redis: RedisService,
     private readonly rideEventsService: RideEventsService,
+    private readonly notificationService: NotificationService,
     @InjectQueue(QUEUE_NAMES.RIDE_MATCHING) private readonly rideMatchingQueue: Queue,
   ) {}
 
@@ -351,6 +353,11 @@ export class RidesService {
     await this.rideEventsService.emitRideCancelled(
       rideId, passengerId, assignedDriverId, 'PASSENGER', cancelled.status,
     );
+    if (assignedDriverId) {
+      // Notify the driver that the passenger cancelled
+      const driverUserId = await this.driversRepository.findUserIdByDriverId(assignedDriverId);
+      if (driverUserId) void this.notificationService.createRideCancelled(driverUserId, rideId, 'PASSENGER');
+    }
     this.logger.log(
       `Ride cancelled by passenger: rideId=${rideId} passengerId=${passengerId} reason=${dto.reasonCode}`,
     );
@@ -478,6 +485,7 @@ export class RidesService {
     await timeoutJob?.remove();
 
     this.rideEventsService.emitRideAccepted(rideId, ride.passengerId, driverId);
+    void this.notificationService.createRideAccepted(ride.passengerId, rideId);
     this.logger.log(`Ride accepted: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
   }
@@ -549,6 +557,7 @@ export class RidesService {
     await this.redis.set(this.redis.keys.driverStatus(driverId), 'ONLINE', 60);
 
     await this.rideEventsService.emitRideCompleted(rideId, ride.passengerId, driverId);
+    void this.notificationService.createRideCompleted(ride.passengerId, driverUserId, rideId);
     this.logger.log(`Ride completed: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
   }
@@ -589,6 +598,7 @@ export class RidesService {
     await this.rideEventsService.emitRideCancelled(
       rideId, ride.passengerId, driverId, 'DRIVER', updated.status,
     );
+    void this.notificationService.createRideCancelled(ride.passengerId, rideId, 'DRIVER');
     this.logger.log(`Ride cancelled by driver: rideId=${rideId} driverId=${driverId} reason=${dto.reasonCode}`);
     return this.rideToResponse(updated);
   }
