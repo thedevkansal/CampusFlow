@@ -1,8 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # CampusFlow Backend — Multi-stage Dockerfile
-# Stage 1: deps     — install all dependencies
-# Stage 2: builder  — compile TypeScript
-# Stage 3: runner   — minimal production image
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Install dependencies ────────────────────────────────────────────
@@ -10,14 +7,22 @@ FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
-# Install build tools for native modules
-RUN apk add --no-cache libc6-compat python3 make g++
+# Install build tools required by Prisma/native modules
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
 
-RUN npm ci --only=production --ignore-scripts && \
-    cp -R node_modules /app/node_modules_prod && \
-    npm ci --ignore-scripts
+# Production deps
+RUN npm ci --omit=dev --ignore-scripts && \
+    cp -R node_modules /app/node_modules_prod
+
+# Full deps for build stage
+RUN npm ci --ignore-scripts
 
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS builder
@@ -27,37 +32,41 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma Client
 RUN npx prisma generate
 
-# Compile TypeScript
+# Compile NestJS
 RUN npm run build
 
-# ── Stage 3: Production runner ───────────────────────────────────────────────
+# ── Stage 3: Production Runner ───────────────────────────────────────────────
 FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nestjs && \
-    mkdir -p /app/logs && \
-    chown -R nestjs:nodejs /app/logs
+# Install runtime packages Prisma may need
+RUN apt-get update && apt-get install -y \
+    openssl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy only what's needed for production
+# Copy production dependencies
 COPY --from=deps /app/node_modules_prod ./node_modules
-COPY --from=builder /app/dist ./dist
+
+# Copy Prisma engines generated during build
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
+# Copy app
+COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY package.json ./
 
 EXPOSE 3001
 
-# Healthcheck — matches GET /health endpoint
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:3001/health || exit 1
 
-# Run database migrations then start the server
+# Run migrations and start app
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
