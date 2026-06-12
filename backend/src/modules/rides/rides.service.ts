@@ -22,6 +22,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { PrismaService } from '@prisma/prisma.service';
 import { RideStatus, DriverStatus } from '@prisma/client';
 import {
   DRIVER_CANCELLABLE_STATUSES,
@@ -58,6 +59,15 @@ export interface RideDriverView {
   acceptedAt: Date | null;
 }
 
+export interface DriverCurrentLocation {
+  lat: string;
+  lng: string;
+  heading?: string;
+  speed?: string;
+  updatedAt: string;
+  source: 'redis' | 'database';
+}
+
 export interface RideResponseData {
   id: string;
   status: RideStatus;
@@ -72,6 +82,8 @@ export interface RideResponseData {
   driver?: RideDriverView;
   /** Populated for DRIVER and ADMIN */
   passengerName?: string;
+  /** Current driver location from Redis (with PostgreSQL fallback) — REDIS_SCHEMA §2 */
+  currentDriverLocation?: DriverCurrentLocation | null;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -87,6 +99,7 @@ export class RidesService {
     private readonly rideEventsService: RideEventsService,
     private readonly notificationService: NotificationService,
     private readonly fareEngine: FareEngineService,
+    private readonly prisma: PrismaService,
     @InjectQueue(QUEUE_NAMES.RIDE_MATCHING) private readonly rideMatchingQueue: Queue,
   ) {}
 
@@ -291,7 +304,8 @@ export class RidesService {
     }
     // ADMIN: no ownership check
 
-    return this.toResponseData(ride, callerRole);
+    const driverLocation = await this.fetchDriverLocation(ride.assignment?.driverId ?? null);
+    return this.toResponseData(ride, callerRole, driverLocation);
   }
 
   /**
@@ -497,7 +511,7 @@ export class RidesService {
     const timeoutJob = await this.rideMatchingQueue.getJob(`acceptance-timeout:${rideId}`);
     await timeoutJob?.remove();
 
-    this.rideEventsService.emitRideAccepted(rideId, ride.passengerId, driverId);
+    void this.rideEventsService.emitRideAccepted(rideId, ride.passengerId, driverId);
     void this.notificationService.createRideAccepted(ride.passengerId, rideId);
     this.logger.log(`Ride accepted: rideId=${rideId} driverId=${driverId}`);
     return this.rideToResponse(updated);
@@ -684,6 +698,7 @@ export class RidesService {
   private toResponseData(
     ride: RideWithRelations,
     callerRole: Role,
+    currentDriverLocation?: DriverCurrentLocation | null,
   ): RideResponseData {
     const base: RideResponseData = {
       id: ride.id,
@@ -727,7 +742,49 @@ export class RidesService {
       base.passengerName = ride.passenger.name;
     }
 
+    // Include current driver location for PASSENGER and ADMIN when a driver is assigned
+    if ((isPassenger || isAdmin) && ride.assignment && currentDriverLocation !== undefined) {
+      base.currentDriverLocation = currentDriverLocation;
+    }
+
     return base;
+  }
+
+  /**
+   * Fetch driver's current location from Redis first, fall back to PostgreSQL.
+   * Returns null if no location data is available.
+   *
+   * Source: docs/REDIS_SCHEMA.md §2 — driver:location:{driverId}
+   * Source: docs/REDIS_SCHEMA.md — Fallback: Query latest driver_locations row from PostgreSQL
+   */
+  private async fetchDriverLocation(driverId: string | null): Promise<DriverCurrentLocation | null> {
+    if (!driverId) return null;
+
+    // Try Redis first
+    const hash = await this.redis.hgetall(this.redis.keys.driverLocation(driverId));
+    if (hash?.lat && hash?.lng) {
+      return {
+        lat: hash.lat,
+        lng: hash.lng,
+        heading: hash.heading,
+        speed: hash.speed,
+        updatedAt: hash.updated_at ?? new Date().toISOString(),
+        source: 'redis',
+      };
+    }
+
+    // PostgreSQL fallback — REDIS_SCHEMA §2
+    const row = await this.prisma.driverLocation.findUnique({ where: { driverId } });
+    if (!row) return null;
+
+    return {
+      lat: row.latitude.toString(),
+      lng: row.longitude.toString(),
+      heading: row.heading?.toString(),
+      speed: row.speed?.toString(),
+      updatedAt: row.updatedAt.toISOString(),
+      source: 'database',
+    };
   }
 
   /**

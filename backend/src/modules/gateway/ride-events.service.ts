@@ -82,8 +82,12 @@ export class RideEventsService {
 
   /**
    * Emitted when driver accepts the ride (ASSIGNED → ACCEPTED).
+   * Driver socket joins ride:{rideId} room for live tracking — SOCKET_PROTOCOL.md §Room Structure.
    */
-  emitRideAccepted(rideId: string, passengerId: string, driverId: string): void {
+  async emitRideAccepted(rideId: string, passengerId: string, driverId: string): Promise<void> {
+    // Join driver socket to ride room for shared driver:location_update events
+    this.driverNsp.in(`driver:${driverId}`).socketsJoin(`ride:${rideId}`);
+
     const ts = new Date().toISOString();
     this.passengerNsp
       .to(`passenger:${passengerId}`)
@@ -107,7 +111,7 @@ export class RideEventsService {
 
   /**
    * Emitted when a ride is cancelled by either party.
-   * Clears driver:active_ride cache.
+   * Clears driver:active_ride cache and removes sockets from ride room.
    */
   async emitRideCancelled(
     rideId: string,
@@ -121,13 +125,16 @@ export class RideEventsService {
     if (driverId) {
       this.driverNsp.to(`driver:${driverId}`).emit('ride_cancelled', payload);
       await this.redis.del(this.redis.keys.driverActiveRide(driverId));
+      // Leave ride room — SOCKET_PROTOCOL.md §Room Structure (terminal state cleanup)
+      this.driverNsp.in(`driver:${driverId}`).socketsLeave(`ride:${rideId}`);
     }
+    this.passengerNsp.in(`passenger:${passengerId}`).socketsLeave(`ride:${rideId}`);
     this.logger.debug(`ride_cancelled emitted: rideId=${rideId} by=${cancelledBy}`);
   }
 
   /**
    * Emitted when driver completes the ride (IN_PROGRESS → COMPLETED).
-   * Clears driver:active_ride cache.
+   * Clears driver:active_ride cache and removes sockets from ride room.
    */
   async emitRideCompleted(
     rideId: string,
@@ -135,15 +142,18 @@ export class RideEventsService {
     driverId: string,
   ): Promise<void> {
     const payload = { rideId, status: 'COMPLETED', timestamp: new Date().toISOString() };
-    this.passengerNsp.to(`passenger:${passengerId}`).emit('ride_completed', payload);
-    this.driverNsp.to(`driver:${driverId}`).emit('ride_completed', payload);
+    this.passengerNsp.to(`ride:${rideId}`).emit('ride_completed', payload);
     await this.redis.del(this.redis.keys.driverActiveRide(driverId));
+    // Leave ride room — SOCKET_PROTOCOL.md §Room Structure (terminal state cleanup)
+    this.driverNsp.in(`driver:${driverId}`).socketsLeave(`ride:${rideId}`);
+    this.passengerNsp.in(`passenger:${passengerId}`).socketsLeave(`ride:${rideId}`);
     this.logger.debug(`ride_completed emitted: rideId=${rideId}`);
   }
 
   /**
    * Emitted when driver's location changes during an active ride (REST path).
    * Socket path broadcasts directly in DriverGateway.handleLocation.
+   * Event name: driver:location_update — SOCKET_PROTOCOL.md
    */
   emitDriverLocationUpdated(
     rideId: string,
@@ -151,11 +161,15 @@ export class RideEventsService {
     latitude: number,
     longitude: number,
   ): void {
-    this.passengerNsp.to(`ride:${rideId}`).emit('driver_location_updated', {
+    const payload = {
       driverId,
       latitude,
       longitude,
+      heading: 0,
+      speed: 0,
       timestamp: new Date().toISOString(),
-    });
+    };
+    this.passengerNsp.to(`ride:${rideId}`).emit('driver:location_update', payload);
+    this.driverNsp.to(`ride:${rideId}`).emit('driver:location_update', payload);
   }
 }

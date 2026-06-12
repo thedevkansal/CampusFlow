@@ -48,6 +48,7 @@ export const JOB_NAMES = {
 
   // location-persistence queue
   FLUSH_DRIVER_LOCATION: 'flush-driver-location',
+  CLEANUP_STALE_DRIVERS: 'cleanup-stale-drivers',
 } as const;
 
 /** BullMQ default job options per queue */

@@ -1,0 +1,89 @@
+@baseUrl = http://localhost:3001/api/v1
+@driverToken  = REPLACE_WITH_DRIVER_JWT
+@rideId       = REPLACE_WITH_RIDE_ID
+
+# ─── REST: Driver Online ──────────────────────────────────────────────────────
+
+### 1. Driver goes online (sets drivers:online + driver:status in Redis)
+POST {{baseUrl}}/drivers/online
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "latitude": 12.9716,
+  "longitude": 77.5946
+}
+
+# ─── REST: Driver Location Update ────────────────────────────────────────────
+
+### 2. Driver location update via REST (writes to DB + updates Redis, emits to ride room)
+PATCH {{baseUrl}}/drivers/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "latitude": 12.9720,
+  "longitude": 77.5950,
+  "heading": 90,
+  "speed": 25.5
+}
+
+### 3. Second location update (simulates driver moving)
+PATCH {{baseUrl}}/drivers/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "latitude": 12.9725,
+  "longitude": 77.5955,
+  "heading": 92,
+  "speed": 27.0
+}
+
+# ─── REST: GET /rides/:id with live driver location ───────────────────────────
+
+### 4. Get ride details — includes currentDriverLocation from Redis (or DB fallback)
+GET {{baseUrl}}/rides/{{rideId}}
+Authorization: Bearer {{driverToken}}
+
+# ─── Socket.IO: Connect + Location Streaming ─────────────────────────────────
+# The following are Socket.IO events — test via socket-test.ts or Postman WS:
+#
+# Connect to /driver namespace:
+#   io('http://localhost:3001/driver', { auth: { token: '<DRIVER_JWT>' } })
+#
+# Send driver:location event (triggers Redis update + BullMQ persistence job):
+#   socket.emit('driver:location', {
+#     latitude: 12.9716,
+#     longitude: 77.5946,
+#     heading: 90,
+#     speed: 25.0,
+#     timestamp: new Date().toISOString()
+#   })
+#
+# Expected events received by passenger in ride:{rideId} room:
+#   driver:location_update  — { driverId, latitude, longitude, heading, speed, timestamp }
+#
+# ─── Socket.IO: Ride Room Creation ───────────────────────────────────────────
+# When ride transitions ASSIGNED → ACCEPTED:
+#   - Passenger socket auto-joins ride:{rideId} room (on ASSIGNED)
+#   - Driver socket auto-joins ride:{rideId} room (on ACCEPTED)
+#   - Both receive driver:location_update broadcasts
+#
+# ─── Socket.IO: Live Tracking Flow ───────────────────────────────────────────
+# Full flow:
+#   1. Passenger creates ride  →  SEARCHING
+#   2. Matching engine assigns driver  →  ASSIGNED  (passenger joins ride room)
+#   3. Driver accepts  →  ACCEPTED  (driver joins ride room)
+#   4. Driver sends driver:location every 500ms  →  both receive driver:location_update
+#   5. Ride completes  →  both leave ride room, driver:active_ride cleared
+#
+# ─── Socket.IO: Reconnect / Session Restore ──────────────────────────────────
+# On reconnect, client emits session:restore:
+#   socket.emit('session:restore', {
+#     lastEventTimestamp: '2026-06-12T10:00:00.000Z'
+#   }, (response) => {
+#     // response.missedEvents: Array<{ event, payload, timestamp }>
+#   })
+#
+# Expected: session:restored payload with missed ride_events since lastEventTimestamp.

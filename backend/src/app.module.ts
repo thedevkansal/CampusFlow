@@ -35,6 +35,7 @@ import { RidesModule } from '@modules/rides/rides.module';
 import { MatchingModule } from '@modules/matching/matching.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { RatingsModule } from '@modules/ratings/ratings.module';
+import { LocationModule } from '@modules/location/location.module';
 
 @Module({
   imports: [
@@ -65,6 +66,8 @@ import { RatingsModule } from '@modules/ratings/ratings.module';
     NotificationsModule,
     // Phase 6: Ratings & Reviews
     RatingsModule,
+    // Phase 7: Live Tracking — location persistence + stale cleanup
+    LocationModule,
     // Phase 5: (realtime — already wired via GatewayModule)
     // Phase 7: AnalyticsModule
     // Phase 8: DemandForecastingModule
