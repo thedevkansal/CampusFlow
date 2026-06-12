@@ -60,6 +60,16 @@ export class AppConfigService {
     return this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
   }
 
+  // ─── Pricing ─────────────────────────────────────────────────────────────────
+
+  get fareBaseFare(): number {
+    return this.configService.get<number>('FARE_BASE_FARE', 50);
+  }
+
+  get farePerKmRate(): number {
+    return this.configService.get<number>('FARE_PER_KM_RATE', 12);
+  }
+
   // ─── Matching Engine ─────────────────────────────────────────────────────────
 
   get matchingRadiusKm(): number {

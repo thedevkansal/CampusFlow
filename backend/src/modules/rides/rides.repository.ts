@@ -29,6 +29,8 @@ export interface CreateRideInput {
   destLat: number;
   destLng: number;
   destAddress?: string;
+  estimatedDistanceKm?: number;
+  estimatedFare?: number;
 }
 
 export interface CreateCancellationInput {
@@ -62,25 +64,6 @@ export const DRIVER_CANCELLABLE_STATUSES: RideStatus[] = [
   RideStatus.ARRIVING,
 ];
 
-/** Fare constants — no external pricing engine in Phase 3B */
-const BASE_FARE = 50;
-const PER_KM_RATE = 12;
-
-/** Haversine distance in km between two lat/lng points */
-function haversineKm(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number,
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 const ACTIVE_STATUSES: RideStatus[] = [
   RideStatus.REQUESTED,
@@ -119,6 +102,8 @@ export class RidesRepository {
         destLat: data.destLat,
         destLng: data.destLng,
         destAddress: data.destAddress,
+        estimatedDistanceKm: data.estimatedDistanceKm,
+        estimatedFare: data.estimatedFare,
         status: RideStatus.REQUESTED,
         // Insert immutable event log entry atomically
         events: {
@@ -432,13 +417,7 @@ export class RidesRepository {
    *
    * Source: docs/RIDE_STATE_MACHINE.md — IN_PROGRESS → COMPLETED side effects
    */
-  async completeRide(rideId: string, driverId: string, ride: Ride): Promise<Ride> {
-    const distanceKm = haversineKm(
-      Number(ride.pickupLat), Number(ride.pickupLng),
-      Number(ride.destLat), Number(ride.destLng),
-    );
-    const fareAmount = parseFloat((BASE_FARE + distanceKm * PER_KM_RATE).toFixed(2));
-
+  async completeRide(rideId: string, driverId: string, fareAmount: number, distanceKm: number): Promise<Ride> {
     return this.prisma.$transaction(async (tx) => {
       const completed = await tx.ride.update({
         where: { id: rideId },
@@ -450,7 +429,7 @@ export class RidesRepository {
       });
 
       await tx.rideFare.create({
-        data: { rideId, amount: fareAmount, currency: 'INR' },
+        data: { rideId, amount: fareAmount, distanceKm, currency: 'INR' },
       });
 
       await tx.driverEarning.create({

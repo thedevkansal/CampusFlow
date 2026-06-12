@@ -21,6 +21,7 @@ import { PrismaModule } from '@prisma/prisma.module';
 import { RedisModule } from '@modules/redis/redis.module';
 import { QueueModule } from '@modules/queue/queue.module';
 import { GatewayModule } from '@modules/gateway/gateway.module';
+import { PricingModule } from '@modules/pricing/pricing.module';
 import { HealthModule } from '@modules/health/health.module';
 
 // Global providers
@@ -43,6 +44,7 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
     RedisModule,
     QueueModule,
     GatewayModule,
+    PricingModule,
 
     // ── Observability ─────────────────────────────────────────────────────────
     HealthModule,

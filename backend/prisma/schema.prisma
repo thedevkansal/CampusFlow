@@ -177,10 +177,12 @@ model Ride {
   pickupLat      Decimal    @map("pickup_lat") @db.Decimal(10, 7)
   pickupLng      Decimal    @map("pickup_lng") @db.Decimal(10, 7)
   pickupAddress  String?    @map("pickup_address") @db.VarChar(255)
-  destLat        Decimal    @map("destination_lat") @db.Decimal(10, 7)
-  destLng        Decimal    @map("destination_lng") @db.Decimal(10, 7)
-  destAddress    String?    @map("destination_address") @db.VarChar(255)
-  status         RideStatus @default(REQUESTED)
+  destLat              Decimal    @map("destination_lat") @db.Decimal(10, 7)
+  destLng              Decimal    @map("destination_lng") @db.Decimal(10, 7)
+  destAddress          String?    @map("destination_address") @db.VarChar(255)
+  estimatedDistanceKm  Decimal?   @map("estimated_distance_km") @db.Decimal(10, 3)
+  estimatedFare        Decimal?   @map("estimated_fare") @db.Decimal(10, 2)
+  status               RideStatus @default(REQUESTED)
   requestedAt    DateTime   @default(now()) @map("requested_at")
   completedAt    DateTime?  @map("completed_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
@@ -239,6 +241,7 @@ model RideFare {
   id           String   @id @default(uuid()) @db.Uuid
   rideId       String   @unique @map("ride_id") @db.Uuid
   amount       Decimal  @db.Decimal(10, 2)
+  distanceKm   Decimal  @map("distance_km") @db.Decimal(10, 3)
   currency     String   @default("INR") @db.VarChar(3)
   calculatedAt DateTime @default(now()) @map("calculated_at")
 

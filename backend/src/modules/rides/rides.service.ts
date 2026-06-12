@@ -37,6 +37,7 @@ import { RedisService } from '@modules/redis/redis.service';
 import { QUEUE_NAMES, JOB_NAMES, QUEUE_JOB_OPTIONS } from '@modules/queue/queue.constants';
 import { RideEventsService } from '@modules/gateway/ride-events.service';
 import { NotificationService } from '@modules/notifications/notification.service';
+import { FareEngineService } from '@modules/pricing/fare-engine.service';
 import { Role } from '@common/types';
 
 // ─── Response Types ───────────────────────────────────────────────────────────
@@ -65,6 +66,8 @@ export interface RideResponseData {
   requestedAt: Date;
   completedAt: Date | null;
   updatedAt: Date;
+  estimatedDistanceKm?: string;
+  estimatedFare?: string;
   /** Populated for PASSENGER and ADMIN once a driver is assigned (Phase 4+) */
   driver?: RideDriverView;
   /** Populated for DRIVER and ADMIN */
@@ -83,6 +86,7 @@ export class RidesService {
     private readonly redis: RedisService,
     private readonly rideEventsService: RideEventsService,
     private readonly notificationService: NotificationService,
+    private readonly fareEngine: FareEngineService,
     @InjectQueue(QUEUE_NAMES.RIDE_MATCHING) private readonly rideMatchingQueue: Queue,
   ) {}
 
@@ -114,6 +118,11 @@ export class RidesService {
       });
     }
 
+    // Estimate fare before persisting (Phase 5)
+    const fareEstimate = this.fareEngine.estimate(
+      dto.pickupLat, dto.pickupLng, dto.destLat, dto.destLng,
+    );
+
     // DB: create at REQUESTED, then immediately transition to SEARCHING
     const created = await this.ridesRepository.create({
       passengerId,
@@ -123,6 +132,8 @@ export class RidesService {
       destLat: dto.destLat,
       destLng: dto.destLng,
       destAddress: dto.destAddress,
+      estimatedDistanceKm: fareEstimate.distanceKm,
+      estimatedFare: fareEstimate.estimatedFare,
     });
     const ride = await this.ridesRepository.transitionToSearching(created.id);
 
@@ -181,6 +192,8 @@ export class RidesService {
         lng: ride.destLng.toString(),
         address: ride.destAddress,
       },
+      estimatedDistanceKm: ride.estimatedDistanceKm?.toString(),
+      estimatedFare: ride.estimatedFare?.toString(),
       requestedAt: ride.requestedAt,
       completedAt: ride.completedAt,
       updatedAt: ride.updatedAt,
@@ -549,7 +562,11 @@ export class RidesService {
       });
     }
 
-    const updated = await this.ridesRepository.completeRide(rideId, driverId, ride);
+    const { distanceKm, estimatedFare: fareAmount } = this.fareEngine.estimate(
+      Number(ride.pickupLat), Number(ride.pickupLng),
+      Number(ride.destLat), Number(ride.destLng),
+    );
+    const updated = await this.ridesRepository.completeRide(rideId, driverId, fareAmount, distanceKm);
     await this.driversRepository.updateStatus(driverId, DriverStatus.ONLINE);
 
     // Redis cleanup — RIDE_STATE_MACHINE.md §IN_PROGRESS→COMPLETED
@@ -634,7 +651,7 @@ export class RidesService {
    * Convert a Ride (without relations) to RideResponseData.
    * Used for driver lifecycle responses where relation data is not needed.
    */
-  private rideToResponse(ride: { id: string; status: RideStatus; pickupLat: any; pickupLng: any; pickupAddress: string | null; destLat: any; destLng: any; destAddress: string | null; requestedAt: Date; completedAt: Date | null; updatedAt: Date }): RideResponseData {
+  private rideToResponse(ride: { id: string; status: RideStatus; pickupLat: any; pickupLng: any; pickupAddress: string | null; destLat: any; destLng: any; destAddress: string | null; estimatedDistanceKm?: any; estimatedFare?: any; requestedAt: Date; completedAt: Date | null; updatedAt: Date }): RideResponseData {
     return {
       id: ride.id,
       status: ride.status,
@@ -648,6 +665,8 @@ export class RidesService {
         lng: ride.destLng.toString(),
         address: ride.destAddress,
       },
+      estimatedDistanceKm: ride.estimatedDistanceKm?.toString(),
+      estimatedFare: ride.estimatedFare?.toString(),
       requestedAt: ride.requestedAt,
       completedAt: ride.completedAt,
       updatedAt: ride.updatedAt,
@@ -679,6 +698,8 @@ export class RidesService {
         lng: ride.destLng.toString(),
         address: ride.destAddress,
       },
+      estimatedDistanceKm: ride.estimatedDistanceKm?.toString(),
+      estimatedFare: ride.estimatedFare?.toString(),
       requestedAt: ride.requestedAt,
       completedAt: ride.completedAt,
       updatedAt: ride.updatedAt,

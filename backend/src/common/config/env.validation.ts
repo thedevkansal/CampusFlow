@@ -26,6 +26,8 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
 
   // Matching Engine — all configurable per docs/MATCHING_ENGINE.md
+  FARE_BASE_FARE: Joi.number().positive().default(50),
+  FARE_PER_KM_RATE: Joi.number().positive().default(12),
   MATCHING_RADIUS_KM: Joi.number().positive().default(5),
   MATCHING_MAX_CANDIDATES: Joi.number().integer().positive().default(20),
   MATCHING_TOP_N: Joi.number().integer().positive().default(3),
