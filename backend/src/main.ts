@@ -86,6 +86,8 @@ async function bootstrap(): Promise<void> {
   // ── Step 8: Graceful Shutdown ───────────────────────────────────────────────
   app.enableShutdownHooks();
 
+  console.log('Nest starting...');
+
   // ── Step 9: Start ───────────────────────────────────────────────────────────
   const port = config.port;
   await app.listen(port);

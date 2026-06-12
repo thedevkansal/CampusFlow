@@ -56,14 +56,26 @@ export class QueueModule {}
 function parseRedisUrl(url: string): {
   host: string;
   port: number;
+  username?: string;
   password?: string;
   db?: number;
+  tls?: Record<string, never>;
 } {
   const parsed = new URL(url);
+
   return {
     host: parsed.hostname,
     port: parseInt(parsed.port || '6379', 10),
+    username: parsed.username || undefined,
     password: parsed.password || undefined,
-    db: parsed.pathname ? parseInt(parsed.pathname.slice(1) || '0', 10) : 0,
+    db: parsed.pathname
+      ? parseInt(parsed.pathname.slice(1) || '0', 10)
+      : 0,
+
+    ...(parsed.protocol === 'rediss:'
+      ? {
+          tls: {},
+        }
+      : {}),
   };
 }

@@ -32,7 +32,9 @@ export class RedisIoAdapter extends IoAdapter {
     const url = this.config.redisUrl;
 
     // Two dedicated connections: one for pub, one for sub
-    const pubClient = new Redis(url, { lazyConnect: false });
+    const pubClient = new Redis(url, { lazyConnect: false,
+      tls: url.startsWith('rediss://') ? {} : undefined,
+     });
     const subClient = pubClient.duplicate();
 
     await Promise.all([
