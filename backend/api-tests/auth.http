@@ -10,7 +10,7 @@ Content-Type: application/json
 
 {
 "name": "Passenger Test",
-"email": "passenger2@test.com",
+"email": "dev@test.com",
 "password": "StrongPassword123!",
 "role": "PASSENGER"
 }
@@ -24,7 +24,7 @@ Content-Type: application/json
 
 {
 "name": "Driver Test",
-"email": "driver2@test.com",
+"email": "driver@test.com",
 "password": "StrongPassword123!",
 "role": "DRIVER"
 }

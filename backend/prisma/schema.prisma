@@ -83,21 +83,25 @@ enum NotificationType {
 // ─── Users ───────────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String   @db.VarChar(100)
-  email        String   @unique @db.VarChar(255)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  role         UserRole @default(PASSENGER)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(100)
+  email          String   @unique @db.VarChar(255)
+  passwordHash   String   @map("password_hash") @db.VarChar(255)
+  role           UserRole @default(PASSENGER)
+  isActive       Boolean  @default(true) @map("is_active")
+  averageRating  Decimal  @default(5.0) @map("average_rating") @db.Decimal(3, 2)
+  totalRatings   Int      @default(0) @map("total_ratings")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   // Relations
-  driver        Driver?
-  rides         Ride[]           @relation("PassengerRides")
-  notifications Notification[]
-  refreshTokens RefreshToken[]
-  adminActions  AdminAction[]    @relation("AdminActionActor")
+  driver          Driver?
+  rides           Ride[]           @relation("PassengerRides")
+  notifications   Notification[]
+  refreshTokens   RefreshToken[]
+  adminActions    AdminAction[]    @relation("AdminActionActor")
+  ratingsGiven    Rating[]         @relation("ReviewsGiven")
+  ratingsReceived Rating[]         @relation("ReviewsReceived")
 
   @@index([email])
   @@index([role])
@@ -141,7 +145,6 @@ model Driver {
   user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   location          DriverLocation?
   assignments       RideAssignment[]
-  ratings           Rating[]
   earnings          DriverEarning[]
   cancellationReasons CancellationReason[]
 
@@ -192,7 +195,7 @@ model Ride {
   assignment          RideAssignment?
   events              RideEvent[]
   fare                RideFare?
-  rating              Rating?
+  ratings             Rating[]
   cancellationReasons CancellationReason[]
 
   @@index([passengerId])
@@ -271,18 +274,21 @@ model CancellationReason {
 // ─── Ratings ─────────────────────────────────────────────────────────────────
 
 model Rating {
-  id          String   @id @default(uuid()) @db.Uuid
-  rideId      String   @unique @map("ride_id") @db.Uuid
-  driverId    String   @map("driver_id") @db.Uuid
-  passengerId String   @map("passenger_id") @db.Uuid
-  rating      Int      @db.SmallInt // 1–5
-  comment     String?  @db.VarChar(500)
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  rideId     String   @map("ride_id") @db.Uuid
+  reviewerId String   @map("reviewer_id") @db.Uuid
+  revieweeId String   @map("reviewee_id") @db.Uuid
+  score      Int      @db.SmallInt
+  comment    String?  @db.VarChar(500)
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  ride   Ride   @relation(fields: [rideId], references: [id], onDelete: Cascade)
-  driver Driver @relation(fields: [driverId], references: [id])
+  ride     Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  reviewer User @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee User @relation("ReviewsReceived", fields: [revieweeId], references: [id])
 
-  @@index([driverId])
+  @@unique([rideId, reviewerId])
+  @@index([revieweeId])
+  @@index([rideId])
   @@map("ratings")
 }
 

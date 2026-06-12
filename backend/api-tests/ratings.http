@@ -1,0 +1,71 @@
+@baseUrl = http://localhost:3001/api/v1
+
+@passengerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhY2YwY2NkZi1mNjQ2LTQ0NzktOTIwMy1iMDYyNzI5MGQ4NmQiLCJlbWFpbCI6ImRldkB0ZXN0LmNvbSIsInJvbGUiOiJQQVNTRU5HRVIiLCJqdGkiOiIwMGJjNDRlZC05ZjM0LTQ1ZWYtOWMxZS1lMWFmZjc5YjE5MGUiLCJpYXQiOjE3ODEyNzM5NjMsImV4cCI6MTc4MTI3NDg2M30.8tu_B0c7QcXjjvGsJp5XCmi1cP1ErqZF3I1GEZpeq_w
+@driverToken    = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwYWZmYTY5NC1hMjRjLTRjNGMtYWM1NC1kYjhhZmMzODY4ZTgiLCJlbWFpbCI6ImRyaXZlckB0ZXN0LmNvbSIsInJvbGUiOiJEUklWRVIiLCJqdGkiOiI5NTNmY2MyZi0xMzNlLTQ2MmEtYjM2Ny1hMGY0YzU2ZDdmYjIiLCJpYXQiOjE3ODEyNzQwMDQsImV4cCI6MTc4MTI3NDkwNH0.1egns2EtmwzMGe0LOqMQ2k4NjJklkcV7NFRzR-u5vjM
+@rideId         = REPLACE_WITH_COMPLETED_RIDE_ID
+
+### Passenger rates Driver (score 5)
+POST {{baseUrl}}/ratings
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+  "rideId": "{{rideId}}",
+  "score": 5,
+  "comment": "Great driver, very smooth ride!"
+}
+
+###
+
+### Driver rates Passenger (score 4)
+POST {{baseUrl}}/ratings
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "rideId": "{{rideId}}",
+  "score": 4,
+  "comment": "Polite passenger, on time."
+}
+
+###
+
+### Duplicate rating — should return 409
+POST {{baseUrl}}/ratings
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+  "rideId": "{{rideId}}",
+  "score": 3
+}
+
+###
+
+### Rating on non-completed ride — should return 422
+POST {{baseUrl}}/ratings
+Authorization: Bearer {{passengerToken}}
+Content-Type: application/json
+
+{
+  "rideId": "00000000-0000-0000-0000-000000000000",
+  "score": 5
+}
+
+###
+
+### Get all ratings for a ride
+GET {{baseUrl}}/ratings/ride/{{rideId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+### Get ratings received by authenticated user
+GET {{baseUrl}}/ratings/received
+Authorization: Bearer {{driverToken}}
+
+###
+
+### Get ratings given by authenticated user
+GET {{baseUrl}}/ratings/given
+Authorization: Bearer {{passengerToken}}

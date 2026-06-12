@@ -34,6 +34,7 @@ import { DriversModule } from '@modules/drivers/drivers.module';
 import { RidesModule } from '@modules/rides/rides.module';
 import { MatchingModule } from '@modules/matching/matching.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
+import { RatingsModule } from '@modules/ratings/ratings.module';
 
 @Module({
   imports: [
@@ -62,6 +63,8 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
     MatchingModule,
     // Phase 4B: In-App Notifications
     NotificationsModule,
+    // Phase 6: Ratings & Reviews
+    RatingsModule,
     // Phase 5: (realtime — already wired via GatewayModule)
     // Phase 7: AnalyticsModule
     // Phase 8: DemandForecastingModule
