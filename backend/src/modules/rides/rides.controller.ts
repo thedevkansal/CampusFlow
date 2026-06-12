@@ -105,6 +105,27 @@ export class RidesController {
   }
 
   /**
+   * GET /api/v1/rides/driver-active
+   *
+   * Returns the driver's current non-terminal assigned ride.
+   * 404 if none exists.
+   *
+   * IMPORTANT: Must be declared BEFORE /rides/:id to avoid 'driver-active' being parsed as a UUID.
+   *
+   * Source: docs/RBAC.md — DRIVER 🔒 only
+   */
+  @Get('driver-active')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  async getActiveRideForDriver(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<RideResponseData>> {
+    const data = await this.ridesService.getActiveRideForDriver(user.id);
+    return { success: true, data, message: 'Active ride retrieved successfully' };
+  }
+
+  /**
    * GET /api/v1/rides/:id
    *
    * Role-specific response shaping:

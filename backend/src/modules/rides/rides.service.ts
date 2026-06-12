@@ -255,6 +255,32 @@ export class RidesService {
   }
 
   /**
+   * Returns the driver's current non-terminal ride.
+   * 404 if none exists.
+   *
+   * Source: docs/RBAC.md — DRIVER 🔒 only
+   */
+  async getActiveRideForDriver(driverUserId: string): Promise<RideResponseData> {
+    const driverId = await this.resolveDriverId(driverUserId);
+    if (!driverId) {
+      throw new NotFoundException({
+        message: 'Driver profile not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const ride = await this.ridesRepository.findActiveByDriverId(driverId);
+    if (!ride) {
+      throw new NotFoundException({
+        message: 'No active ride found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    return this.toResponseData(ride, Role.DRIVER);
+  }
+
+  /**
    * Get a ride by ID with role-specific field shaping.
    *
    * Ownership enforcement (DB is source of truth — no JWT driverId used):

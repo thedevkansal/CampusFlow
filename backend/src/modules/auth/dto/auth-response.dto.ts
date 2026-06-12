@@ -40,6 +40,9 @@ export interface ProfileResponseData {
   name: string;
   role: Role;
   createdAt: Date;
+  averageRating: string;
+  totalRatings: number;
+  totalRides: number;
   /** Present only when role === DRIVER */
   driverId?: string;
 }

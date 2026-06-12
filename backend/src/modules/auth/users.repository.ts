@@ -43,12 +43,15 @@ export class UsersRepository {
    */
   async findByIdWithDriver(
     id: string,
-  ): Promise<(User & { driver: { id: string } | null }) | null> {
+  ): Promise<(User & { driver: { id: string } | null; _count: { rides: number } }) | null> {
     return this.prisma.user.findUnique({
       where: { id },
       include: {
         driver: {
           select: { id: true },
+        },
+        _count: {
+          select: { rides: true },
         },
       },
     });

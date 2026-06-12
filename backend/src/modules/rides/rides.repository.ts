@@ -208,6 +208,40 @@ export class RidesRepository {
   }
 
   /**
+   * Find a driver's current active ride (non-terminal status).
+   * Returns null if the driver has no active assigned ride.
+   */
+  async findActiveByDriverId(
+    driverId: string,
+  ): Promise<RideWithRelations | null> {
+    return this.prisma.ride.findFirst({
+      where: {
+        assignment: { driverId },
+        status: { in: ACTIVE_STATUSES },
+      },
+      orderBy: { requestedAt: 'desc' },
+      include: {
+        passenger: { select: { name: true } },
+        assignment: {
+          select: {
+            driverId: true,
+            acceptedAt: true,
+            driver: {
+              select: {
+                vehicleNumber: true,
+                vehicleModel: true,
+                vehicleColor: true,
+                rating: true,
+                user: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
    * Transition a ride to PASSENGER_CANCELLED.
    * Atomically:
    *   1. Updates rides.status

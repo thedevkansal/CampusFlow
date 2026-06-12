@@ -177,6 +177,9 @@ export class AuthService {
       name: user.name,
       role: user.role as Role,
       createdAt: user.createdAt,
+      averageRating: user.averageRating.toString(),
+      totalRatings: user.totalRatings,
+      totalRides: user._count.rides,
       driverId: user.driver?.id,
     };
   }
