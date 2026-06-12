@@ -6,7 +6,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Install dependencies ────────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN npm ci --only=production --ignore-scripts && \
     npm ci --ignore-scripts
 
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -34,7 +34,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ── Stage 3: Production runner ───────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
@@ -52,8 +52,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 COPY package.json ./
-
-USER nestjs
 
 EXPOSE 3001
 
